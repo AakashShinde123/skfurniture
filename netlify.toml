@@ -1,0 +1,27 @@
+# ---------------------------------------------------------------------------
+# Netlify deployment configuration — SK Furniture
+#
+# Required environment variables (set in Netlify UI → Site settings →
+# Environment variables, NEVER in this file — it is committed to git):
+#
+#   DATABASE_URL                    postgresql://… (Neon / Supabase / RDS …)
+#   NEXT_PUBLIC_SITE_URL            https://your-site.netlify.app  (or custom domain)
+#   NEXT_PUBLIC_STORAGE_PUBLIC_BASE https://<your-r2-public-domain>  (when STORAGE_DRIVER=r2)
+#   STORAGE_DRIVER                  r2  (Netlify has no persistent disk)
+#   R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET
+#
+# The database schema is created once from your machine:
+#   DATABASE_URL="<remote url>" npm run db:push
+#   DATABASE_URL="<remote url>" npm run seed
+# ---------------------------------------------------------------------------
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  NEXT_TELEMETRY_DISABLED = "1"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

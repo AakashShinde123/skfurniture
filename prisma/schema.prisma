@@ -1,0 +1,169 @@
+// ---------------------------------------------------------------------------
+// Furniture Catalogue CMS — Prisma schema (PostgreSQL)
+//
+// Works with any managed PostgreSQL database (Neon, Supabase, Amazon RDS,
+// Railway, or a local server). Connection is configured via DATABASE_URL.
+//
+// Multi-value fields (colours, social links, business hours, hero stats,
+// testimonials) are stored as JSON strings and parsed in the service layer.
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider      = "prisma-client-js"
+  // "native"       → local development / VPS (matches the machine running Prisma)
+  // "rhel-openssl-3.0.x" → Netlify Functions runtime (Amazon Linux 2023, Node 20+)
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Admin identity & sessions
+// ---------------------------------------------------------------------------
+
+model AdminUser {
+  id           String         @id @default(cuid())
+  username     String         @unique
+  name         String
+  passwordHash String
+  isActive     Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  sessions     AdminSession[]
+}
+
+model AdminSession {
+  id           String     @id @default(cuid())
+  tokenHash    String     @unique // sha256 of the raw session token
+  userId       String
+  user         AdminUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userAgent    String?
+  ipAddress    String?
+  expiresAt    DateTime
+  createdAt    DateTime   @default(now())
+  lastSeenAt   DateTime   @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
+// Catalogue
+// ---------------------------------------------------------------------------
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  imageUrl    String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  products    Product[]
+
+  @@index([isActive, sortOrder])
+}
+
+model Product {
+  id               String        @id @default(cuid())
+  name             String
+  slug             String        @unique
+  sku              String        @unique
+  categoryId       String
+  category         Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  shortDescription String?
+  description      String?
+  // Prices stored as whole INR (furniture prices have no paise in practice).
+  price            Int?
+  originalPrice    Int?
+  dimensionWidth   Float?
+  dimensionDepth   Float?
+  dimensionHeight  Float?
+  dimensionUnit    String        @default("cm") // cm | inch | feet
+  material         String?
+  finish           String?
+  colours          String? // JSON array of strings
+  availability     String        @default("AVAILABLE") // AVAILABLE | UNAVAILABLE | MADE_TO_ORDER
+  deliveryInfo     String?
+  isFeatured       Boolean       @default(false)
+  status           String        @default("DRAFT") // DRAFT | PUBLISHED
+  seoTitle         String?
+  seoDescription   String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  images           ProductImage[]
+
+  @@index([categoryId])
+  @@index([status, isFeatured])
+  @@index([status, createdAt])
+  @@index([name])
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  imageKey  String // storage key inside the configured storage backend (R2 object key in production)
+  altText   String?
+  sortOrder Int     @default(0)
+  isPrimary Boolean @default(false)
+
+  @@index([productId])
+  @@index([imageKey])
+}
+
+// ---------------------------------------------------------------------------
+// Media library — one row per uploaded file, independent of products so the
+// library can show orphaned assets and prevent unsafe deletions.
+// ---------------------------------------------------------------------------
+
+model MediaAsset {
+  id        String   @id @default(cuid())
+  key       String   @unique // storage key
+  filename  String   // original file name
+  mimeType  String
+  size      Int // bytes after optimisation
+  width     Int?
+  height    Int?
+  altText   String?
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Site settings — single-row table (id = "default")
+// ---------------------------------------------------------------------------
+
+model SiteSetting {
+  id                    String   @id @default("default")
+  shopName              String   @default("Woodcraft Furniture House")
+  tagline               String   @default("Crafted furniture for beautiful homes")
+  logoUrl               String?
+  whatsappNumber        String   @default("919876543210") // digits only, with country code
+  phone                 String   @default("+91 98765 43210")
+  email                 String   @default("hello@woodcraftfurniture.in")
+  address               String   @default("Shop 12, Furniture Market, MG Road, Mumbai, Maharashtra 400001")
+  mapLink               String   @default("https://maps.google.com/?q=MG+Road+Mumbai")
+  businessHours         String   @default("Mon – Sat: 10:00 AM – 8:30 PM\nSunday: 11:00 AM – 6:00 PM")
+  serviceAreas          String   @default("Mumbai, Thane, Navi Mumbai, Pune")
+  announcementText      String?
+  heroHeadline          String   @default("Furniture That Turns a House Into a Home")
+  heroSubtitle          String   @default("Handcrafted sofas, beds, wardrobes and dining sets — built from seasoned wood by artisans with 20+ years of experience.")
+  heroImageUrl          String?
+  heroCtaText           String   @default("Explore Collection")
+  heroCtaLink           String   @default("/catalogue")
+  heroStats             String? // JSON array: { value, label } — stat strip under the hero
+  aboutTitle            String   @default("Our Story")
+  aboutStory            String   @default("Woodcraft Furniture House began in 1998 as a small carpentry workshop in Mumbai. Today we furnish hundreds of homes across Maharashtra with furniture made from seasoned sheesham, teak and mango wood.\n\nEvery piece is built by our in-house artisans, checked at three quality stages, and delivered fully assembled. Visit our showroom to feel the difference real solid wood makes.")
+  showroomImages        String? // JSON array of image keys
+  socialLinks           String? // JSON: { instagram, facebook, youtube }
+  testimonialsEnabled   Boolean  @default(true)
+  testimonials          String? // JSON array: { name, area, text, rating }
+  defaultSeoTitle       String   @default("Woodcraft Furniture House — Premium Furniture in Mumbai")
+  defaultSeoDescription String   @default("Buy premium sofas, beds, wardrobes, dining sets and custom furniture in Mumbai. Solid wood craftsmanship, fair pricing and free delivery. Enquire on WhatsApp today.")
+  updatedAt             DateTime @updatedAt
+}
